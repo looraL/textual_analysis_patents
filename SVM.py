@@ -1,18 +1,3 @@
-#!/usr/bin/env python2
-# -*- coding: utf-8 -*-
-"""
-Created on Wed Jul 25 16:41:38 2018
-
-@author: lizhuoran
-"""
-
-#!/usr/bin/env python2
-# -*- coding: utf-8 -*-
-"""
-Created on Wed Jul 11 19:07:28 2018
-
-@author: lizhuoran
-"""
 import pandas as pd
 import numpy as np
 import re
@@ -26,7 +11,6 @@ from sklearn.svm import SVC
 from sklearn.metrics import roc_auc_score, confusion_matrix, accuracy_score, f1_score
 from sklearn.pipeline import Pipeline
 from sklearn.model_selection import GridSearchCV
-
 
 from sklearn.linear_model import SGDClassifier
 from sklearn.linear_model import LogisticRegression
@@ -44,9 +28,7 @@ SVM_embedding = False
 output_false_pred = False
 
 NUM_CATEGORY = 4
-#MAX_NB_WORDS = 20000
 VALIDATION_SPLIT = 0.333
-
 
 if load_data: 
     # read top 300 rows from the spreadsheet into a pandas dataframe 
@@ -310,7 +292,6 @@ if output_false_pred:
 ##sample_test = df_val.sample(frac=0.1)
 ##gs_clf = gs_clf.fit(sample_train.text, sample_train.label)
 #gs_clf.best_score_ 
-##0.724736
 #CV_result = gs_clf.cv_results_
 ##optimized para ngram_range = (1, 1); use_idf=True; clf_alpha=1e-3
 
