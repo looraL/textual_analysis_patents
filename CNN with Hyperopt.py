@@ -44,6 +44,9 @@ from hyperopt.mongoexp import MongoTrials
 import random
 import string
 
+import deepexplain
+from deepexplain.tensorflow import DeepExplain
+
 
 prepare_data = False
 load_exp_space = False
@@ -52,6 +55,7 @@ construct_model_tuned = True
 train = False
 plot = False
 check_prediction = False
+interpret = False
 
 CLEAN_TEXT = True
 NUM_CATEGORY = 5
@@ -470,6 +474,25 @@ if check_prediction:
     false_pred.to_excel(writer, 'wrong')
     writer.save()
     
+if interpret:    
+    with DeepExplain(session=K.get_session()) as de:  # <-- init DeepExplain context
+            # Need to reconstruct the graph in DeepExplain context, using the same weights.
+
+            # 1. Get the embedding output as input tensor
+            eModel = Model(inputs=sequence_input, outputs=model.layers[0].output)
+            input_tensor = eModel(sequence_input)
+            #input_tensor = model.layers[0].input
+
+            # 2. target the output of the last dense layer (pre-softmax)
+            # To do so, create a new model sharing the same layers untill the last dense (index -2)
+            fModel = Model(inputs=input_tensor, outputs = model.layers[-2].output)
+            target_tensor = fModel(input_tensor)
+
+            xs = x_test[0:NUM_CATEGORY]
+            ys = y_test[0:NUM_CATEGORY]
+
+            attributions = de.explain('elrp', target_tensor * ys, input_tensor, xs)
+
     
 
 
