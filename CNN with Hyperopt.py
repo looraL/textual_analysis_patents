@@ -44,9 +44,9 @@ from hyperopt.mongoexp import MongoTrials
 import random
 import string
 
-import deepexplain
+# unable to import installed package
+#resolve: sys.path.append('/Users/lizhuoran/Desktop/UOFT/research/patents/src/deepexplain')
 from deepexplain.tensorflow import DeepExplain
-
 
 prepare_data = False
 load_exp_space = False
@@ -475,24 +475,27 @@ if check_prediction:
     writer.save()
     
 if interpret:    
-    with DeepExplain(session=K.get_session()) as de:  # <-- init DeepExplain context
-            # Need to reconstruct the graph in DeepExplain context, using the same weights.
 
-            # 1. Get the embedding output as input tensor
-            eModel = Model(inputs=sequence_input, outputs=model.layers[0].output)
-            input_tensor = eModel(sequence_input)
-            #input_tensor = model.layers[0].input
-
-            # 2. target the output of the last dense layer (pre-softmax)
-            # To do so, create a new model sharing the same layers untill the last dense (index -2)
-            fModel = Model(inputs=input_tensor, outputs = model.layers[-2].output)
-            target_tensor = fModel(input_tensor)
-
-            xs = x_test[0:NUM_CATEGORY]
-            ys = y_test[0:NUM_CATEGORY]
-
-            attributions = de.explain('elrp', target_tensor * ys, input_tensor, xs)
-
-    
+    with DeepExplain(session=K.get_session()) as de:  
+        # Need to reconstruct the graph in DeepExplain context, using the same weights.
+        
+        model = load_model('model-008.h5')
+        temp_input = model.layers[0].input
+        # 1. Get the embedding output as input tensor
+        eModel = Model(inputs=temp_input, outputs=model.layers[1].output)
+        input_tensor = eModel(temp_input)
+        #input_tensor = model.layers[0].input
+        
+        # 2. target the output of the last dense layer (pre-softmax)
+        # To do so, create a new model sharing the same layers untill the last dense (index -2)
+        fModel = Model(inputs=temp_input, outputs = model.layers[-2].output)
+        target_tensor = fModel(temp_input)
+                  
+        xs = model.layers[1].output[0:5]
+        #xs = x_test[0:5]
+        ys = y_test[0:5]
+        
+        attributions = de.explain('elrp', target_tensor * ys, input_tensor, xs)
+        
 
 
