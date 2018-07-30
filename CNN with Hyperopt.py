@@ -44,14 +44,26 @@ from hyperopt.mongoexp import MongoTrials
 import random
 import string
 
-# unable to import installed package
-#resolve: sys.path.append('/Users/lizhuoran/Desktop/UOFT/research/patents/src/deepexplain')
-from deepexplain.tensorflow import DeepExplain
+## pip install git+https://github.com/albermax/innvestigate
+#import innvestigate
+#import innvestigate.applications
+#import innvestigate.applications.mnist
+#import innvestigate.utils as iutils
+#import innvestigate.utils.visualizations as ivis
+#
+#import innvestigate.utils
+#import innvestigate.utils.tests
+#import innvestigate.utils.tests.networks
+
+#sys.path.append('/Users/lizhuoran/Desktop/UOFT/research/patents/src/deepexplain')
+
+#from deepexplain.tensorflow import DeepExplain
+import tensorflow as tf
 
 prepare_data = False
 load_exp_space = False
 hyper_tune = False
-construct_model_tuned = True
+construct_model_tuned = False
 train = False
 plot = False
 check_prediction = False
@@ -173,6 +185,26 @@ def prepare_train_test(data, train_size=300):
 
     return x_train, y_train, texts_train, x_test, y_test, texts_test, token_index
 
+def postprocess(X):
+    X = X.copy()
+    X = iutils.postprocess_images(X)
+    return X
+
+def image(X):
+    X = X.copy()
+    X = iutils.postprocess_images(X)
+    return ivis.graymap(X,
+                        input_is_postive_only=True)
+
+def bk_proj(X):
+    return ivis.graymap(X)
+
+def heatmap(X):
+    return ivis.heatmap(X)
+
+def graymap(X):
+    return ivis.graymap(np.abs(X), input_is_postive_only=True)
+
 if prepare_data:
     # Kaggle IMDB dataset: https://www.kaggle.com/c/word2vec-nlp-tutorial/data
     # pd dataframe of size(25000, 3), columns: id, sentiment ,review(multiple sentences in one review)
@@ -293,7 +325,9 @@ def objective(params):
     l_actv1 = Activation(params['actv'])(l_dense)
     # this dropout layer reduce "loss" from test set, observed from plots
     l_dropout2 = Dropout(params['dropout2'])(l_actv1) 
-    pred = Dense(5, activation='softmax', W_regularizer=l2(params['pred_l2']))(l_dropout2)
+    l_dense2 = Dense(5, W_regularizer=l2(params['pred_l2']))(l_dropout2)
+    pred = Activation('softmax')(l_dense2)
+    
     model = Model(inputs= sequence_input, outputs=pred)
     model.compile(loss='categorical_crossentropy',
                   optimizer=params['optimizer'],
@@ -344,7 +378,9 @@ if construct_model_tuned:
         l_actv1 = Activation('relu')(l_dense)
         l_dropout2 = Dropout(0.2)(l_actv1) 
     
-        pred = Dense(5, activation='softmax', W_regularizer=l2(0.005))(l_dropout2)
+        l_dense2 = Dense(5, W_regularizer=l2(0.005))(l_dropout2)
+        pred = Activation('softmax')(l_dense2)
+        
         model = Model(inputs= sequence_input, outputs=pred)    
         model.compile(loss='categorical_crossentropy',
                   optimizer='rmsprop',
@@ -393,13 +429,15 @@ if construct_model_tuned:
         l_actv1 = Activation('relu')(l_dense)
         l_dropout2 = Dropout(0.5)(l_actv1) 
     
-        pred = Dense(5, activation='softmax', W_regularizer=l2(0.1))(l_dropout2)
+        l_dense2 = Dense(5, W_regularizer=l2(0.1))(l_dropout2)
+        pred = Activation('softmax')(l_dense2)
+        
         model = Model(inputs= sequence_input, outputs=pred)   
         model.compile(loss='categorical_crossentropy',
-                  optimizer='adam',
+                  optimizer='nadam',
                   metrics=['accuracy'])
         callbacks = [
-            EarlyStopping(monitor='val_loss', patience=10, verbose=0),
+            EarlyStopping(monitor='val_loss', patience=5, verbose=0),
             ModelCheckpoint('model-{epoch:03d}.h5', verbose=1, monitor='val_loss',save_best_only=True, mode='auto') 
             ]
         history = model.fit(x_train, y_train, validation_data=(x_test, y_test),
@@ -416,17 +454,17 @@ if construct_model_tuned:
     # hyperopt tuned:
     # considering randomness in simulations, optimal accuracy varies within 5%(62%-67%)
     
-    # Test acc score: 0.626262626263
-    # Test F1 score: 0.495588064554
-    # Test Confusion Matrix: 
-    # [[27  0  3  0  2]
-    # [ 5 10  0  0  1]
-    # [19  0  3  0  0]
-    # [ 5  0  1  0  0]
-    # [ 0  1  0  0 22]]
+#    Test acc score: 0.636363636364
+#    Test Confusion Matrix: 
+#     [[21  2  3  0  2]
+#     [ 6 12  0  0  1]
+#     [11  2  4  0  0]
+#     [ 3  2  2  0  0]
+#     [ 1  0  1  0 26]]
+#    Test F1 score: 0.49144512934
      
     # load best model
-    #model = load_model('model-021.h5')   
+    model = load_model('model-032.h5')   
     # y_pred: prob. for each class    
     print ("Output for {0} categories: ".format(NUM_CATEGORY))
     y_pred = model.predict(x_test)
@@ -434,6 +472,7 @@ if construct_model_tuned:
     mat_test = confusion_matrix(y_test.argmax(axis=1), y_pred.argmax(axis=1))
     print("Test Confusion Matrix: \n {0}".format(mat_test))
     print("Test F1 score: {0}".format(f1_score(y_test.argmax(axis=1), y_pred.argmax(axis=1), average='macro')))
+    
     
         
 if plot:
@@ -469,33 +508,45 @@ if check_prediction:
     df_test['pred'] = test_predict.reshape((test_predict.shape[0],))
     false_pred = df_test.loc[(df_test['label'] <>  df_test['pred'])]
     
-    writer = pd.ExcelWriter('CNN_compare_pred4.xlsx')
-    df_test.to_excel(writer,'all')
+    
+    df_all = df_test.copy()
+    pred_prob_test = pd.DataFrame(data=y_pred,
+              index = df_test.index.tolist(),
+              columns=np.arange(0, 5))
+    df_all = df_all.merge(pred_prob_test, left_index = True, right_index=True)
+    false_pred_SVM = df_all.loc[(df_all['label'] <> df_all['pred'])]
+    
+    writer = pd.ExcelWriter('CNN_compare_pred5.xlsx')
+    df_all.to_excel(writer,'all')
     false_pred.to_excel(writer, 'wrong')
     writer.save()
+    
     
 if interpret:    
 
     with DeepExplain(session=K.get_session()) as de:  
         # Need to reconstruct the graph in DeepExplain context, using the same weights.
         
-        model = load_model('model-008.h5')
+        model = load_model('model-032.h5')
+        # extract input, output for sample test
+        model_test = load_model('model-050.h5')
+        
         temp_input = model.layers[0].input
         # 1. Get the embedding output as input tensor
-        eModel = Model(inputs=temp_input, outputs=model.layers[1].output)
+        eModel = Model(inputs=temp_input, outputs=model.layers[0].output)
+        #eModel = Model(inputs=temp_input, outputs=model.layers[1].output)
         input_tensor = eModel(temp_input)
-        #input_tensor = model.layers[0].input
         
         # 2. target the output of the last dense layer (pre-softmax)
         # To do so, create a new model sharing the same layers untill the last dense (index -2)
         fModel = Model(inputs=temp_input, outputs = model.layers[-2].output)
         target_tensor = fModel(temp_input)
-                  
-        xs = model.layers[1].output[0:5]
-        #xs = x_test[0:5]
-        ys = y_test[0:5]
+        #input_tensor = model.layers[1].input
+        
+        #xs = tf.slice(input_tensor, [0, 0, 0], [5, 200, 50])
+        xs = model_test.layers[0].output
+        ys = model_test.layers[-2].output
         
         attributions = de.explain('elrp', target_tensor * ys, input_tensor, xs)
         
-
 
