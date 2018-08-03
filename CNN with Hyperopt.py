@@ -523,30 +523,49 @@ if check_prediction:
     
     
 if interpret:    
-
     with DeepExplain(session=K.get_session()) as de:  
         # Need to reconstruct the graph in DeepExplain context, using the same weights.
+        # explain(method_name, target_tensor, input_tensor, samples, ...args)
+        # samples: np-array required
         
-        model = load_model('model-032.h5')
-        # extract input, output for sample test
-        model_test = load_model('model-050.h5')
+        model = load_model('model-036.h5')
         
-        temp_input = model.layers[0].input
-        # 1. Get the embedding output as input tensor
-        eModel = Model(inputs=temp_input, outputs=model.layers[0].output)
-        #eModel = Model(inputs=temp_input, outputs=model.layers[1].output)
-        input_tensor = eModel(temp_input)
+        # reference to tensors
+        input_tensor = model.get_layer("input_x").input
+        embedding = model.get_layer("embedding").output
+        pre_softmax = model.get_layer("dense2").output
         
-        # 2. target the output of the last dense layer (pre-softmax)
+        # sample
+        
+        # this line is classified wrongly, labeled as 3, predicted as 1
+        # context:
+        #p id  p 0022  num  0025    x201c Electrical Injection and Detection of 
+        #Spin Polarized Electrons in Silicon through an Fe sub 3  sub Si Si Schottky 
+        #Tunnel Barrier  x201d , Y  Ando, K  Hamaya, K  Kasahara, Y  Kishi, K  Ueda, K  
+        #Sawano, T  Sadoh, and M  Miyano,  i Applied Physics Letters  i , 
+        #vol  94p  182105, (2009)
+        x_interpret = x_test[9:15]        
+        # perform embedding lookup
+        # use Keras directly? 
+        #embedding_out = sess.run(embedding, {input_tensor: x_interpret})
+        #eModel = Model(inputs=input_tensor, outputs=embedding)
+        #embedding_out = eModel(input_tensor)
+        get_embedding_output = K.function([input_tensor],[embedding])
+        embedding_out = get_embedding_output([x_interpret])[0]        
+        
+        # target the output of the last dense layer (pre-softmax)
         # To do so, create a new model sharing the same layers untill the last dense (index -2)
-        fModel = Model(inputs=temp_input, outputs = model.layers[-2].output)
-        target_tensor = fModel(temp_input)
-        #input_tensor = model.layers[1].input
+        fModel = Model(inputs=input_tensor, outputs = pre_softmax)
+        target_tensor = fModel(input_tensor)
         
-        #xs = tf.slice(input_tensor, [0, 0, 0], [5, 200, 50])
-        xs = model_test.layers[0].output
-        ys = model_test.layers[-2].output
+        # to target a specific neuron(class), we apply a binary map
+        ys = [1, 0, 0, 0]
         
-        attributions = de.explain('elrp', target_tensor * ys, input_tensor, xs)
+        attributions = de.explain('elrp', pre_softmax*ys, embedding, embedding_out)
+        
+        
+        
+
+
         
 
