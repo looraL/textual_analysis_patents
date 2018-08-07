@@ -165,7 +165,7 @@ def prepare_train_test(data, train_size=300):
     return x_train, y_train, texts_train, x_test, y_test, texts_test, token_index
 
 if prepare_data:
-    df = pd.read_excel('20180419SampleText.xlsx', sheet_name='Sheet1').iloc[:300]
+    df = pd.read_excel('../20180419SampleText.xlsx', sheet_name='Sheet1').iloc[:300]
     category_dict = {'Pure Background': 1, 'Tool/Technique/Formula/Input': 2,
                      'Motivation for Research/Difference from Existing Inventions': 3, 
                      'Similar concept being patented, idea that can be used with invention, or potential use of invention': 4,
@@ -209,7 +209,7 @@ if interpret:
         # explain(method_name, target_tensor, input_tensor, samples, ...args)
         # samples: np-array required
         
-        model = load_model('model-036.h5')   
+        model = load_model('../model-036.h5')   
         # y_pred: prob. for each class    
         y_pred = model.predict(x_test)
         
