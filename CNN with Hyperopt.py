@@ -1,9 +1,3 @@
-#!/usr/bin/env python2
-# -*- coding: utf-8 -*-
-"""
-an implementation of CNN model to predict pos/neg movie reviews
-
-"""
 import pandas as pd
 import numpy as np
 import re
@@ -43,6 +37,7 @@ from hyperopt.mongoexp import MongoTrials
 
 import random
 import string
+import json
 
 ## pip install git+https://github.com/albermax/innvestigate
 #import innvestigate
@@ -59,8 +54,9 @@ import string
 
 #from deepexplain.tensorflow import DeepExplain
 import tensorflow as tf
+from tensorflow import Tensor
 
-prepare_data = False
+prepare_data = True
 load_exp_space = False
 hyper_tune = False
 construct_model_tuned = False
@@ -68,11 +64,12 @@ train = False
 plot = False
 check_prediction = False
 interpret = False
+prepare_json = False
 
 CLEAN_TEXT = True
 NUM_CATEGORY = 5
-MAX_SEQUENCE_LENGTH = 200
-MAX_NB_WORDS = 20000 # number of words in vocabulary
+MAX_SEQUENCE_LENGTH = 150
+MAX_NB_WORDS = 25000 # number of words in vocabulary
 EMBEDDING_DIM = 50
 VALIDATION_SPLIT = 0.333
 
@@ -101,7 +98,7 @@ def clean_str(sentence, stop_words, CLEAN_TEXT = True):
         # set to lowercase
         words = [x.lower() for x in words]
         # filter out stop words
-        words = [w for w in words if not w in stop_words]
+        #words = [w for w in words if not w in stop_words]
         # filter out short tokens
         #words = [word for word in words if len(word) > 1]
     
@@ -214,24 +211,26 @@ if prepare_data:
                      'Similar concept being patented, idea that can be used with invention, or potential use of invention': 4,
                      'Impossible to Tell': 5}
     if NUM_CATEGORY == 4: 
-        category_dict['Motivation for Research/Difference from Existing Inventions'] = 1
-        
+        category_dict = {'Pure Background': 1, 'Tool/Technique/Formula/Input': 2,
+                     'Motivation for Research/Difference from Existing Inventions': 1, 
+                     'Similar concept being patented, idea that can be used with invention, or potential use of invention': 3,
+                     'Impossible to Tell': 4}
     for cate in category_dict: 
         df.loc[df[cate] == 1, 'category'] = category_dict[cate]
         
     df = df[['first_author', 'appline', 'category']]
     
-    #train_len = train.review.str.split().str.len()
+    #train_len = df.appline.str.split().str.len()
     #train_len.describe()
-    #count    25000.000000
-    #mean       233.778560
-    #std        173.721262
-    #min         10.000000
-    #25%        127.000000
-    #50%        174.000000
-    #75%        284.000000
-    #max       2470.000000
-    #Name: review, dtype: float64
+    #count    300.000000
+    #mean      91.640000
+    #std       47.539778
+    #min        8.000000
+    #25%       45.000000
+    #50%      106.000000
+    #75%      133.000000
+    #max      172.000000
+    #Name: appline, dtype: float64
     
     # set MAX_SEQUENCE_LENGTH = 1000
     
@@ -256,6 +255,7 @@ if prepare_data:
         embedding_vector = embeddings_index.get(word)
         if embedding_vector is not None:
             # words not found in embedding index will be all-zeros.
+            # size (4343, 50)
             embedding_matrix[i] = embedding_vector
             
     # originally in train section, this should only be changed once in preparation
@@ -358,9 +358,9 @@ if construct_model_tuned:
                                 EMBEDDING_DIM,
                                 weights=[embedding_matrix],
                                 input_length=MAX_SEQUENCE_LENGTH,
-                                trainable=True)
+                                trainable=True, name='embedding')
     
-    sequence_input = Input(shape=(MAX_SEQUENCE_LENGTH,), dtype='int32')
+    sequence_input = Input(shape=(MAX_SEQUENCE_LENGTH, ), dtype='int32', name='input_x')
     embedded_sequences = embedding_layer(sequence_input)
     
     if NUM_CATEGORY == 4:
@@ -378,7 +378,7 @@ if construct_model_tuned:
         l_actv1 = Activation('relu')(l_dense)
         l_dropout2 = Dropout(0.2)(l_actv1) 
     
-        l_dense2 = Dense(5, W_regularizer=l2(0.005))(l_dropout2)
+        l_dense2 = Dense(4, W_regularizer=l2(0.005), name='dense2')(l_dropout2)
         pred = Activation('softmax')(l_dense2)
         
         model = Model(inputs= sequence_input, outputs=pred)    
@@ -393,23 +393,16 @@ if construct_model_tuned:
                   batch_size=32, epochs = 100, callbacks=callbacks)
         score, acc = model.evaluate(x_test, y_test, batch_size=32)
     #############################################   
-        # Outputs for 4 categories:
+    # Outputs for 4 categories:
         
-        # if using the same model as in IMDB without change in hyperparameters
-        # test_acc = 28%, train_acc = 90% in 100 epochs(with early stopping)
-        # this is a bit better than random guess
-        # it seems the main reason involves with BatchNormalization() layer    
-        
-        # hyperopt tuned:
-        # considering randomness in simulations, optimal accuracy varies within 5%(62%-67%)
-        
-        #Test acc score: 0.757575757576
-        #Test Confusion Matrix: 
-        # [[50  0  0  2]
-        # [11  5  0  0]
-        # [ 8  1  0  0]
-        # [ 2  0  0 20]]
-        #Test F1 score: 0.544161123429
+    #Output for 4 categories: 
+    #Test acc score: 0.818181818182
+    #Test Confusion Matrix: 
+    # [[42  7  0  1]
+    # [ 5 15  0  0]
+    # [ 3  0  0  0]
+    # [ 0  2  0 24]]
+    #Test F1 score: 0.615748663102
     #############################################
     
     if NUM_CATEGORY == 5:
@@ -464,7 +457,7 @@ if construct_model_tuned:
 #    Test F1 score: 0.49144512934
      
     # load best model
-    model = load_model('model-032.h5')   
+    model = load_model('model-036.h5')   
     # y_pred: prob. for each class    
     print ("Output for {0} categories: ".format(NUM_CATEGORY))
     y_pred = model.predict(x_test)
@@ -521,51 +514,4 @@ if check_prediction:
     false_pred.to_excel(writer, 'wrong')
     writer.save()
     
-    
-if interpret:    
-    with DeepExplain(session=K.get_session()) as de:  
-        # Need to reconstruct the graph in DeepExplain context, using the same weights.
-        # explain(method_name, target_tensor, input_tensor, samples, ...args)
-        # samples: np-array required
-        
-        model = load_model('model-036.h5')
-        
-        # reference to tensors
-        input_tensor = model.get_layer("input_x").input
-        embedding = model.get_layer("embedding").output
-        pre_softmax = model.get_layer("dense2").output
-        
-        # sample
-        
-        # this line is classified wrongly, labeled as 3, predicted as 1
-        # context:
-        #p id  p 0022  num  0025    x201c Electrical Injection and Detection of 
-        #Spin Polarized Electrons in Silicon through an Fe sub 3  sub Si Si Schottky 
-        #Tunnel Barrier  x201d , Y  Ando, K  Hamaya, K  Kasahara, Y  Kishi, K  Ueda, K  
-        #Sawano, T  Sadoh, and M  Miyano,  i Applied Physics Letters  i , 
-        #vol  94p  182105, (2009)
-        x_interpret = x_test[9:15]        
-        # perform embedding lookup
-        # use Keras directly? 
-        #embedding_out = sess.run(embedding, {input_tensor: x_interpret})
-        #eModel = Model(inputs=input_tensor, outputs=embedding)
-        #embedding_out = eModel(input_tensor)
-        get_embedding_output = K.function([input_tensor],[embedding])
-        embedding_out = get_embedding_output([x_interpret])[0]        
-        
-        # target the output of the last dense layer (pre-softmax)
-        # To do so, create a new model sharing the same layers untill the last dense (index -2)
-        fModel = Model(inputs=input_tensor, outputs = pre_softmax)
-        target_tensor = fModel(input_tensor)
-        
-        # to target a specific neuron(class), we apply a binary map
-        ys = [1, 0, 0, 0]
-        
-        attributions = de.explain('elrp', pre_softmax*ys, embedding, embedding_out)
-        
-        
-        
-
-
-        
 
