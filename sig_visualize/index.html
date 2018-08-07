@@ -1,0 +1,206 @@
+<!--
+Developed based on code by Abigail See, abisee@stanford.edu
+available here: https://github.com/abisee/attn_vis
+-->
+
+<!doctype html>
+<html lang="en">
+ <head>
+  <meta charset="utf-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
+  <title>Attention Visualizer</title>
+  <meta name="description" content="">
+  <meta name="author" content="">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <script src="external/d3.min.js"></script>
+  <script src="external/jquery-3.1.0.min.js"></script>
+  <script src="external/underscore-min.js"></script>
+  <script src="external/sprintf.min.js"></script>
+  <link href='http://fonts.googleapis.com/css?family=Cousine' rel='stylesheet' type='text/css'>
+
+  <style>
+  #wrap {
+    font-family: 'Cousine';
+    position:relative;
+    margin: 10px;
+    font-size: 15px;
+  }
+  </style>
+  <script>
+  json_fname = "sig_vis_data.json" // file containing the text and the weights
+  redhue = 0
+  bluehue = 220
+  label_check = {
+      0: "1: Pure Background / 3: Motivation for Research/Difference from Existing Inventions",
+      1: "2: Tool/Technique/Formula/Input",
+      2: "4: Similar concept being patented, idea that can be used with invention, or potential use of invention",
+      3: "5: Impossible to Tell"
+  };
+
+
+  function round(x, dp) {
+    // round a float to dp decimal places
+    var power_of_10 = 10**dp
+    return Math.round(x*power_of_10)/power_of_10
+  }
+  function toColor(p, hue) {
+    // converts a scalar value p in [0,1] to a HSL color code string with base color hue
+    if (p<0 || p>1) {
+      throw sprintf("Error: p has value %.2f but should be in [0,1]", p)
+      console.log("exceed range")
+    }
+    var saturation = 100 // saturation percentage
+    p = 1-p // invert so p=0 is light and p=1 is dark
+    var min_lightness = 10 // minimum percentage lightness, i.e. darkest possible color
+    var lightness = (min_lightness + p*(100-min_lightness)) // lightness is proportional to p
+    return sprintf('hsl(%d,%s%%,%s%%)', hue, saturation, lightness)
+  }
+  function render_art(div, data, dec_idx, dec_word) {
+    // render the article. if dec_idx and dec_word are not null, we highlight the article with the attention distribution for decoder timestep dec_idx and corresponding decoder word dec_word
+    var startix = 0;
+    var endix = data.abstract_str.length
+    var attn_len = data.decoded_lst.length
+    var dec_len = data.decoded_lst.length
+    div.html(''); // flush
+  }
+  function render_dec(div, data) {
+    // render the decoded summary
+    var startix = 0;
+    var endix = data.decoded_lst.length;
+    div.html(''); // flush
+    for(var i=startix; i<endix; i++) {
+      var word = data.decoded_lst[i]; // a string
+      css = 'display:inline;'
+      if (data.hasOwnProperty('p_gens')) {
+        var p_gen = data.p_gens[i];
+        if (p_gen > 0) {
+          <!--console.log(p_gen)-->
+          var background_color = toColor(p_gen, redhue);
+        } else {
+          var background_color = toColor(-p_gen, bluehue);
+        }
+        css += 'background-color:' + background_color;
+      } else {
+        var p_gen = null;
+      }
+      var dnew = div.append('div');
+      dnew.html(word+' ') // this is the content
+        .attr('class', 'd')
+        .attr('style', css) // apply this style
+        // add interactivity for mouseover decoder words
+        .on('mouseover', getHandleMouseOver(i, word, p_gen))
+        .on('mousemove', handleMouseMove)
+        .on('mouseout', handleMouseOut)
+    }
+  }
+  function getHandleMouseOver(dec_idx, dec_word, p_gen) {
+     // When we mouseover a decoder word, shows significance distribution on article
+     // p_gen is null for non-pointer models
+    return function() {
+      // Renders the article with the appropriate highlighting
+      render_art(d3.select('#art'), gdata, dec_idx, dec_word);
+      // Show a tooltip giving value of p_gen
+      if (p_gen != null) {
+        gtooltip.text(round(p_gen, 3))
+        return gtooltip.style("visibility", "visible");
+      }
+    }
+  }
+  function handleMouseMove() {
+    // When you move cursor over a decoder word, tooltip shows value of prediction significance for that word
+    return gtooltip.style("top", (d3.event.pageY-20)+"px").style("left",(d3.event.pageX+10)+"px");
+  }
+  function handleMouseOut() {
+    // When you move cursor away from a decoder word, stop showing generation probability tooltip
+    return gtooltip.style("visibility", "hidden");
+  }
+  function render_abs(div,data) {
+    // Show the pre-cleaned text(remove non-alphabetic tokens, remove stopwords)
+    div.html(''); // flush
+    var dnew = div.append('div');
+    dnew.html(data.abstract_str);
+  }
+  function render_true_label(div,data){
+     // Show the true label
+     div.html('');//flush
+     var dnew = div.append('div')
+     var label = data.true_label[0]
+     dnew.html(label_check[label])
+  }
+  function render_pred_prob(div, data){
+     // Show the true label
+     div.html(''); //flush
+     var dnew = div.append('div')
+     var label = data.pred_label[0]
+     dnew.html(
+          label_check[0]  +": <b>" + round(data.pred_prob[0][0], 3) + "</b><br/>"
+          + label_check[1] + ": <b>" + round(data.pred_prob[0][1], 3) + "</b><br/>"
+          + label_check[2] + ": <b>" + round(data.pred_prob[0][2], 3) + "</b><br/>"
+          + label_check[3] + ": <b>" + round(data.pred_prob[0][3], 3) + "</b><br/>"
+     )
+  }
+
+  function get_json_and_disp() {
+    // Retrieve the json data file and display the data
+    console.log("fetching " + json_fname + "...")
+    function json_success(data) {
+      // Displays the data
+      console.log("success!")
+      d3.select("#curr_datafile").html('<font color="09B509">Currently displaying: ' + json_fname + "</font>")
+      gdata = data; // store globally
+      console.log(gdata)
+      render_abs(d3.select("#abs"), gdata);
+      console.log("finished rendering text")
+      render_dec(d3.select("#dec"), gdata);
+      console.log("finished rendering significance")
+      render_true_label(d3.select("#label"), gdata);
+      render_pred_prob(d3.select("#pred"), gdata);
+    }
+    function json_fail(d) {
+      // Tell the user it failed to load
+      console.log("failure.")
+      d3.select("#curr_datafile").html('<font color="red">Failed to load ' + json_fname + "</font>")
+    }
+    $.getJSON(json_fname, json_success).fail(json_fail);
+  }
+  function start() {
+    console.log("start")
+    get_json_and_disp()
+    // Define a tooltip that we will use to display generation probability of a decoder word when you hover over it
+    var tooltip = d3.select("body")
+        .append("div")
+        .style("position", "absolute")
+        .style("z-index", "10")
+        .style("visibility", "hidden")
+        .style("background", "white")
+        .style("font-size", "15px")
+        .style("font-family", "Cousine")
+        .text("a simple tooltip");
+    gtooltip = tooltip // global
+  }
+  </script>
+  </head>
+  <body onload="start();">
+    <div id="wrap">
+      <div id="curr_datafile">
+        current datafile name goes here.
+      </div>
+      <h2>Original Text</h2>
+      <div id="abs">
+        reference summary goes here
+      </div>
+      <h2>True Label</h2>
+      <div id="label">
+        true label goes here
+      </div>
+      <h2>Prediction</h2>
+      <div id="pred">
+        predicted probability goes here
+      </div>
+      <h2>Attributes Significance</h2>
+      <div id="dec">
+        attributes significance goes here
+      </div>
+    </div>
+  </body>
+</html>
