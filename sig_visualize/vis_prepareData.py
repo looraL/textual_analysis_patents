@@ -209,7 +209,7 @@ if interpret:
         # explain(method_name, target_tensor, input_tensor, samples, ...args)
         # samples: np-array required
         
-        model = load_model('../model-036.h5')   
+        model = load_model('model-036.h5')   
         # y_pred: prob. for each class    
         y_pred = model.predict(x_test)
         
