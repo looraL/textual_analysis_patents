@@ -622,7 +622,6 @@ if interpret:
     
 if prepare_json:
     # save each sample into a different json file
-    # sig_vis_data1: this line[9:10] is classified correctly, strong confidence, labeled as 1, classified as 1 with prob. 0.873
     with open('/Users/lizhuoran/Desktop/UOFT/research/patents/sig_visualize/sig_vis_data9.json', 'w') as outfile:
         json.dump(format_data, outfile)
         
