@@ -5,7 +5,6 @@ Created on Mon Aug  6 21:45:47 2018
 
 @author: lizhuoran
 """
-
 import pandas as pd
 import numpy as np
 import re
@@ -52,12 +51,13 @@ import tensorflow as tf
 from tensorflow import Tensor
 
 
-prepare_data = True
+prepare_data = False
 interpret = False
+prepare_json = False
 prepare_json = False
 
 CLEAN_TEXT = True
-NUM_CATEGORY = 4
+NUM_CATEGORY = 5
 MAX_SEQUENCE_LENGTH = 150
 MAX_NB_WORDS = 20000 # number of words in vocabulary
 EMBEDDING_DIM = 50
@@ -165,7 +165,7 @@ def prepare_train_test(data, train_size=300):
     return x_train, y_train, texts_train, x_test, y_test, texts_test, token_index
 
 if prepare_data:
-    df = pd.read_excel('../20180419SampleText.xlsx', sheet_name='Sheet1').iloc[:300]
+    df = pd.read_excel('20180419SampleText.xlsx', sheet_name='Sheet1').iloc[:300]
     category_dict = {'Pure Background': 1, 'Tool/Technique/Formula/Input': 2,
                      'Motivation for Research/Difference from Existing Inventions': 3, 
                      'Similar concept being patented, idea that can be used with invention, or potential use of invention': 4,
@@ -209,7 +209,10 @@ if interpret:
         # explain(method_name, target_tensor, input_tensor, samples, ...args)
         # samples: np-array required
         
-        model = load_model('model-036.h5')   
+        # select a trained model for the 4-category classification/ 5-category classification
+        model = load_model('model-036.h5')
+        # set s_index to fetch another sample, ranging from 0-99
+        s_index = 83
         # y_pred: prob. for each class    
         y_pred = model.predict(x_test)
         
@@ -218,7 +221,7 @@ if interpret:
         embedding = model.get_layer("embedding").output
         pre_softmax = model.get_layer("dense2").output
         
-        x_interpret = x_test[9:10]        
+        x_interpret = x_test[s_index:s_index+1]
         # perform embedding lookup
         get_embedding_output = K.function([input_tensor],[embedding])
         embedding_out = get_embedding_output([x_interpret])[0]        
@@ -242,18 +245,22 @@ if interpret:
         new_pgens = []
         for gen in p_gens[0]:
             new_pgens.append([gen])
-            
-        abstract_str = texts_test[9]
-        true_label = y_test[9:10].argmax(axis=1).tolist()
-        pred_prob = y_pred[9:10].tolist()
-        pred_label = y_pred[9:10].argmax(axis=1).tolist()
+
+        # choose sample to test with
+        # TODO: vectorize a list of samples to choose from
+        abstract_str = texts_test[s_index]
+        true_label = y_test[s_index:s_index+1].argmax(axis=1).tolist()
+        pred_prob = y_pred[s_index:s_index+1].tolist()
+        pred_label = y_pred[s_index:s_index+1].argmax(axis=1).tolist()
         
         format_data = {'abstract_str': abstract_str, 'decoded_lst': text_dec, 
                        'p_gens': new_pgens, 'true_label': true_label, 'pred_label': pred_label,
                        'pred_prob': pred_prob}
 
 if prepare_json:
-    with open('sig_vis_data.json', 'w') as outfile:
+    # dump each interpreted sample into a different json file
+    # we have 10 json files as examples, including different cases for 4-category and 5-category
+    with open('sig_vis_data2.json', 'w') as outfile:
         json.dump(format_data, outfile)
         
         
