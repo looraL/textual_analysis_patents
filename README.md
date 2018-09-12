@@ -3,6 +3,7 @@
 1. download the folder sig-visualize
 2. from this directory type in ```python -m SimpleHTTPServer ``` in your terminal
 3. navigate to http://localhost:8000/ in your browser
+4. to visualize a different sample, modify "NUM_CATEGORY" and "json_fname" accordingly, around line 30 in index.html, details can be found in comments 
 
 Note: 
 1. sig-visualize contains a pre-trained model with 4 classifiers, and there is no need to train a network to run the visualization
