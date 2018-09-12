@@ -27,14 +27,32 @@ available here: https://github.com/abisee/attn_vis
   }
   </style>
   <script>
-  json_fname = "sig_vis_data.json" // file containing the text and the weights
+  // change the following two lines for a different sample
+  // "NUM_CATEGORY = 4" for sig_vis_data, sig_vis_data1, sig_vis_data2, sig_vis_data3
+  // "NUM_CATEGORY = 5" for sig_vis_data4, sig_vis_data5, ..., sig_vis_data9
+  NUM_CATEGORY = 5
+  json_fname = "sig_vis_data4.json" // file containing the text and the weights
+
   redhue = 0
   bluehue = 220
-  label_check = {
-      0: "1: Pure Background / 3: Motivation for Research/Difference from Existing Inventions",
-      1: "2: Tool/Technique/Formula/Input",
-      2: "4: Similar concept being patented, idea that can be used with invention, or potential use of invention",
-      3: "5: Impossible to Tell"
+
+  // hash numbers to labels in texts
+  if (NUM_CATEGORY == 4) {
+        label_check = {
+          0: "1: Pure Background / 3: Motivation for Research/Difference from Existing Inventions",
+          1: "2: Tool/Technique/Formula/Input",
+          2: "4: Similar concept being patented, idea that can be used with invention, or potential use of invention",
+          3: "5: Impossible to Tell"
+        }
+  }
+  else{
+      label_check = {
+          0: "1: Pure Background",
+          1: "2: Tool/Technique/Formula/Input",
+          2: "3: Motivation for Research/Difference from Existing Inventions",
+          3: "4: Similar concept being patented, idea that can be used with invention, or potential use of invention",
+          4: "5: Impossible to Tell"
+       }
   };
 
 
@@ -132,12 +150,22 @@ available here: https://github.com/abisee/attn_vis
      div.html(''); //flush
      var dnew = div.append('div')
      var label = data.pred_label[0]
-     dnew.html(
-          label_check[0]  +": <b>" + round(data.pred_prob[0][0], 3) + "</b><br/>"
-          + label_check[1] + ": <b>" + round(data.pred_prob[0][1], 3) + "</b><br/>"
-          + label_check[2] + ": <b>" + round(data.pred_prob[0][2], 3) + "</b><br/>"
-          + label_check[3] + ": <b>" + round(data.pred_prob[0][3], 3) + "</b><br/>"
-     )
+     if (NUM_CATEGORY == 4) {
+         dnew.html(
+              label_check[0]  +": <b>" + round(data.pred_prob[0][0], 3) + "</b><br/>"
+              + label_check[1] + ": <b>" + round(data.pred_prob[0][1], 3) + "</b><br/>"
+              + label_check[2] + ": <b>" + round(data.pred_prob[0][2], 3) + "</b><br/>"
+              + label_check[3] + ": <b>" + round(data.pred_prob[0][3], 3) + "</b><br/>"
+         )
+     }else{
+         dnew.html(
+              label_check[0]  +": <b>" + round(data.pred_prob[0][0], 3) + "</b><br/>"
+              + label_check[1] + ": <b>" + round(data.pred_prob[0][1], 3) + "</b><br/>"
+              + label_check[2] + ": <b>" + round(data.pred_prob[0][2], 3) + "</b><br/>"
+              + label_check[3] + ": <b>" + round(data.pred_prob[0][3], 3) + "</b><br/>"
+              + label_check[4] + ": <b>" + round(data.pred_prob[0][4], 3) + "</b><br/>"
+         )
+     }
   }
 
   function get_json_and_disp() {
@@ -197,7 +225,9 @@ available here: https://github.com/abisee/attn_vis
       <div id="pred">
         predicted probability goes here
       </div>
-      <h2>Attributes Significance</h2>
+         <!--if we would like to show attribute significance for another class, e.g. the true class in a case of wrong prediction
+         it would be better to modify substrings in the following headline "Predicted Class" -->
+      <h2>Attributes Significance for Predicted Class</h2>
       <div id="dec">
         attributes significance goes here
       </div>
