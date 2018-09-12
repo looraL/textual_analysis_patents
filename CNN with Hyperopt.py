@@ -1,9 +1,16 @@
+#!/usr/bin/env python2
+# -*- coding: utf-8 -*-
+"""
+an implementation of CNN model to predict pos/neg movie reviews
+
+"""
 import pandas as pd
 import numpy as np
 import re
 import itertools
 from collections import Counter
 import os
+import sys
 
 from bs4 import BeautifulSoup
 import nltk
@@ -39,47 +46,58 @@ import random
 import string
 import json
 
-## pip install git+https://github.com/albermax/innvestigate
-#import innvestigate
-#import innvestigate.applications
-#import innvestigate.applications.mnist
-#import innvestigate.utils as iutils
-#import innvestigate.utils.visualizations as ivis
-#
-#import innvestigate.utils
-#import innvestigate.utils.tests
-#import innvestigate.utils.tests.networks
 
 #sys.path.append('/Users/lizhuoran/Desktop/UOFT/research/patents/src/deepexplain')
 
+#note: import DeepExplain only once
+# I've encountered conflicts if running this line a second time
 #from deepexplain.tensorflow import DeepExplain
 import tensorflow as tf
 from tensorflow import Tensor
 
-prepare_data = True
+
+# settings and controls
+
+# controls: each corresponds to a section, initialized as False
+
+# prepare training/test sets(x, y, text)
+prepare_data = False
+# hyper tune range of choices
 load_exp_space = False
+# hyper tune run trials
 hyper_tune = False
+# construct model: needs manual input from "hyper_tune" output(variable suggestions)
 construct_model_tuned = False
 train = False
+# accuracy and loss
 plot = False
+# generate predicted probability for each class, load output into excel
 check_prediction = False
+# run deepExplain
 interpret = False
+# prepare a json file for web visualization, load output from deepExplain into json
 prepare_json = False
 
-CLEAN_TEXT = True
-NUM_CATEGORY = 5
-MAX_SEQUENCE_LENGTH = 150
+CLEAN_TEXT = True # used in function clean_doc, clean_str 
+NUM_CATEGORY = 5 # set to 4 or 5
+MAX_SEQUENCE_LENGTH = 150 # max number of words in one sample
 MAX_NB_WORDS = 25000 # number of words in vocabulary
 EMBEDDING_DIM = 50
 VALIDATION_SPLIT = 0.333
 
-def clean_doc(string, CLEAN_TEXT = True):
+
+def clean_doc(string, author = None, CLEAN_TEXT= True):
     if CLEAN_TEXT: 
+        # better to reserve HTML tags
         #string = BeautifulSoup(string).get_text()
+        
+        # remove some symbols, common cleaning techniques used for IMBD dataset
         string = re.sub(r"[^A-Za-z0-9(),!?\'\`]"," ", string)
         string = re.sub(r"\\", "", string)      
         string = re.sub(r"\"", "", string)
-    
+    if not author == None:
+        string = string.replace(author, 'name')
+        
     return string.encode('utf-8')
 
 
@@ -88,8 +106,6 @@ def clean_str(sentence, stop_words, CLEAN_TEXT = True):
     string cleaning for dataset
     All in lowercase
     """
-    # Remove HTML syntax
-    
     words = sentence.split()
     
     if CLEAN_TEXT:
@@ -98,13 +114,18 @@ def clean_str(sentence, stop_words, CLEAN_TEXT = True):
         # set to lowercase
         words = [x.lower() for x in words]
         # filter out stop words
-        #words = [w for w in words if not w in stop_words]
+        # imported stop words from nltk
+        # words = [w for w in words if not w in stop_words]
+        
         # filter out short tokens
+        # observation: single letter word was colored in the final visualization, such as 'p'
         #words = [word for word in words if len(word) > 1]
     
     return words
 
 
+# train_size means total size for labeled data
+# split into 200 training and 100 test
 def prepare_train_test(data, train_size=300):
     """
     Randomly shuffle data, tokenize and do word-level one-hot embedding on texts.
@@ -123,7 +144,17 @@ def prepare_train_test(data, train_size=300):
         # https://stackoverflow.com/questions/24004278/unicodedecodeerror-utf8-codec-cant-decode-byte-0xc3-in-position-34-unexpect
         # if we remove all the conflicts
         #texts.append(clean_str(text.get_text().encode('ascii', 'ignore')))
+        
+        # replace first author with "name"
+#        author = data.first_author[ind]
+#        texts.append(clean_doc(text, author, CLEAN_TEXT=True))
+        # original last name for authors, if not substitute with "name", authors' last names will be replaced with "SUB" since GLOVE cannot 
+        # find matched word for such last names
+        
+        # save text for visualizations later
         texts.append(clean_doc(text, CLEAN_TEXT=True))
+        
+        # y_label        
         labels.append(data.category[ind])
         
     # pairwise shuffle on texts and labels 
@@ -132,13 +163,11 @@ def prepare_train_test(data, train_size=300):
     texts, labels = zip(*pack_texts_labels)
     texts = texts[:train_size]
     labels = labels[:train_size]
-    
- 
+     
     # word-level one-hot embedding without Keras
     # output np array(# of review, length of review), with word index as value
     # build an index of all tokens in the data.
      
-    # Question: only include most common # of words? 
     # filter out stop_words
     # token_index equivalent to word_index in the commented keras one-hot embedding block
     stop_words = set(stopwords.words('english'))
@@ -170,7 +199,6 @@ def prepare_train_test(data, train_size=300):
     labels = np.delete(labels, 0, 1)
     
     # split train, test dataset using VALIDATION_SPLIT ratio
-    #reverse_word_map = dict(map(sequences[0], word_index.items()))
     nb_validation_samples = int(VALIDATION_SPLIT * len(texts))
     
     x_train = oneHot_result[:-nb_validation_samples]
@@ -182,29 +210,11 @@ def prepare_train_test(data, train_size=300):
 
     return x_train, y_train, texts_train, x_test, y_test, texts_test, token_index
 
-def postprocess(X):
-    X = X.copy()
-    X = iutils.postprocess_images(X)
-    return X
 
-def image(X):
-    X = X.copy()
-    X = iutils.postprocess_images(X)
-    return ivis.graymap(X,
-                        input_is_postive_only=True)
-
-def bk_proj(X):
-    return ivis.graymap(X)
-
-def heatmap(X):
-    return ivis.heatmap(X)
-
-def graymap(X):
-    return ivis.graymap(np.abs(X), input_is_postive_only=True)
 
 if prepare_data:
     # Kaggle IMDB dataset: https://www.kaggle.com/c/word2vec-nlp-tutorial/data
-    # pd dataframe of size(25000, 3), columns: id, sentiment ,review(multiple sentences in one review)
+    # pd dataframe of size(300, 3), columns: id, first_author, appline, category
     df = pd.read_excel('20180419SampleText.xlsx', sheet_name='Sheet1').iloc[:300]
     category_dict = {'Pure Background': 1, 'Tool/Technique/Formula/Input': 2,
                      'Motivation for Research/Difference from Existing Inventions': 3, 
@@ -215,6 +225,7 @@ if prepare_data:
                      'Motivation for Research/Difference from Existing Inventions': 1, 
                      'Similar concept being patented, idea that can be used with invention, or potential use of invention': 3,
                      'Impossible to Tell': 4}
+    # enumerate one-hot encoding
     for cate in category_dict: 
         df.loc[df[cate] == 1, 'category'] = category_dict[cate]
         
@@ -258,10 +269,6 @@ if prepare_data:
             # size (4343, 50)
             embedding_matrix[i] = embedding_vector
             
-    # originally in train section, this should only be changed once in preparation
-#    y_train = y_train[:,1]
-#    y_val = y_val[:,1]
-    
     
 if load_exp_space:
     #This is the parameter space to explore with hyperopt
@@ -298,8 +305,8 @@ if load_exp_space:
         }
 
 
-  
-#if construct_model:      
+
+#objective function for hyper tune      
 def objective(params):
     # load embedding matrix to an embedding layer
     # outputs a 3D tensor of shape (samples, sequence_length, embedding_dim)
@@ -312,10 +319,14 @@ def objective(params):
     sequence_input = Input(shape=(MAX_SEQUENCE_LENGTH,), dtype='int32')
     embedded_sequences = embedding_layer(sequence_input)
   
+    # trained on 101 reviews, validated on 99 reviews
+    # dense layer immediate after concatenated convolutional layers
     l_conv = Conv1D(nb_filter=params['num_filters'],filter_length=params['fsz1'], kernel_regularizer=l2(params['conv_l2']))(embedded_sequences)
+    # normalization decrease accuracy significantly
     #l_norm = BatchNormalization()(l_conv)
     l_actv = Activation(params['actv'])(l_conv)
     l_dropout = Dropout(params['dropout1'])(l_actv) 
+    # (Zhang et al.) proposed that globalMaxPooling gives the best performance
     l_pool = MaxPooling1D(params['maxPooling'])(l_dropout)    
     # reduce the three-dimensional output to two dimensional for concatenation
     l_flat = Flatten()(l_pool)
@@ -325,9 +336,11 @@ def objective(params):
     l_actv1 = Activation(params['actv'])(l_dense)
     # this dropout layer reduce "loss" from test set, observed from plots
     l_dropout2 = Dropout(params['dropout2'])(l_actv1) 
-    l_dense2 = Dense(5, W_regularizer=l2(params['pred_l2']))(l_dropout2)
+    l_dense2 = Dense(NUM_CATEGORY, W_regularizer=l2(params['pred_l2']))(l_dropout2)
+    # multi-class classification
     pred = Activation('softmax')(l_dense2)
     
+    # tutorial on optimizer: http://ruder.io/optimizing-gradient-descent/index.html#rmsprop
     model = Model(inputs= sequence_input, outputs=pred)
     model.compile(loss='categorical_crossentropy',
                   optimizer=params['optimizer'],
@@ -343,11 +356,20 @@ def objective(params):
     history = model.fit(x_train, y_train, validation_data=(x_test, y_test),
               batch_size=params['batch_size'], epochs = 100, callbacks=callbacks)
     score, acc = model.evaluate(x_test, y_test, batch_size=params['batch_size'])
-    
+    #minimizing' -val_acc' to attain the best set of parameters
     return {'loss': -acc, 'status': STATUS_OK, 'model': model }
 
+# run hyper tune, minimize objective function
 if hyper_tune:
+    # to apply hyperopt, we need to specify:
+    # 1. the objective function to minimize
+    # 2. the space over which to search
+    # 3. a trials database [optional]
+    # 4.  the search algorithm to use [optional] (Bergstra et al.2013)
     trials = Trials()
+    # func = objective(), minimize -acc
+    # input parameters on trial: space{}
+    # pass in a Trials() object so that we can retain all the assessed points during the search besides the 'best'one, access by Trials' attributes
     best = fmin(objective, space, algo=tpe.suggest, trials=trials, max_evals=10)
     print (best)
     print (trials.best_trial)
@@ -378,8 +400,10 @@ if construct_model_tuned:
         l_actv1 = Activation('relu')(l_dense)
         l_dropout2 = Dropout(0.2)(l_actv1) 
     
-        l_dense2 = Dense(4, W_regularizer=l2(0.005), name='dense2')(l_dropout2)
+        l_dense2 = Dense(4, W_regularizer=l2(0.05), name='dense2')(l_dropout2)
         pred = Activation('softmax')(l_dense2)
+        
+        sys.path.append('/4cate_models')
         
         model = Model(inputs= sequence_input, outputs=pred)    
         model.compile(loss='categorical_crossentropy',
@@ -405,6 +429,15 @@ if construct_model_tuned:
     #Test F1 score: 0.615748663102
     #############################################
     
+#    Output for 4 categories: 
+#    Test acc score: 0.737373737374
+#    Test Confusion Matrix: 
+#     [[39  5  0  3]
+#     [10 16  0  1]
+#     [ 6  1  0  0]
+#     [ 0  0  0 18]]
+#    Test F1 score: 0.579441776711
+   
     if NUM_CATEGORY == 5:
 #         hyperparameters chosen by hyperopt
 #         for 5 categories
@@ -422,8 +455,10 @@ if construct_model_tuned:
         l_actv1 = Activation('relu')(l_dense)
         l_dropout2 = Dropout(0.5)(l_actv1) 
     
-        l_dense2 = Dense(5, W_regularizer=l2(0.1))(l_dropout2)
+        l_dense2 = Dense(5, W_regularizer=l2(0.1), name='dense2')(l_dropout2)
         pred = Activation('softmax')(l_dense2)
+        
+        sys.path.append('/5cate_models')
         
         model = Model(inputs= sequence_input, outputs=pred)   
         model.compile(loss='categorical_crossentropy',
@@ -447,17 +482,19 @@ if construct_model_tuned:
     # hyperopt tuned:
     # considering randomness in simulations, optimal accuracy varies within 5%(62%-67%)
     
-#    Test acc score: 0.636363636364
+#    Output for 5 categories: 
+#    Test acc score: 0.626262626263
 #    Test Confusion Matrix: 
-#     [[21  2  3  0  2]
-#     [ 6 12  0  0  1]
-#     [11  2  4  0  0]
-#     [ 3  2  2  0  0]
-#     [ 1  0  1  0 26]]
-#    Test F1 score: 0.49144512934
+#     [[22  0  9  0  0]
+#     [ 9 15  0  0  0]
+#     [11  1  5  0  1]
+#     [ 3  0  3  0  0]
+#     [ 0  0  0  0 20]]
+#    Test F1 score: 0.518054282047
      
     # load best model
-    model = load_model('model-036.h5')   
+    # use model-045.h5 for 5-category; model-035.h5 for 4-category
+    model = load_model('model-045.h5')   
     # y_pred: prob. for each class    
     print ("Output for {0} categories: ".format(NUM_CATEGORY))
     y_pred = model.predict(x_test)
@@ -467,7 +504,7 @@ if construct_model_tuned:
     print("Test F1 score: {0}".format(f1_score(y_test.argmax(axis=1), y_pred.argmax(axis=1), average='macro')))
     
     
-        
+# plot accuracy rate and loss        
 if plot:
     # summarize history for accuracy
 #    print(history.summary())
@@ -478,7 +515,7 @@ if plot:
     plt.xlabel('epoch')
     plt.legend(['train', 'test'], loc='upper left')
     plt.show()
-    #savefig('withoutDropout_acc')
+    
     # summarize history for loss
     plt.plot(history.history['loss'])
     plt.plot(history.history['val_loss'])
@@ -487,12 +524,13 @@ if plot:
     plt.xlabel('epoch')
     plt.legend(['train', 'test'], loc='upper left')
     plt.show()
-    #savefig('withoutDropout_loss')
+    
 if check_prediction:
     # find false positives and false negatives
-    # predict on test set then save incorrect predictions, note test set contains 25,000 records
-    #incorrects = np.nonzero(model.predict(x_val).reshape((-1,)) != y_val)
-    test_predict = y_pred.argmax(axis=1)
+    # predict on test set then save incorrect predictions, note test set contains 99 records
+    # y_pred: prob. for each class    
+    test_predict = y_pred.argmax(axis=1) # find class with highest prob.
+    # combine true label, predicted label and texts into one dataframe 
     compare_test = pd.DataFrame({'y_test':y_test.argmax(axis=1), 
                                 'pred_test':test_predict.reshape((test_predict.shape[0],))})
     df_text_test = pd.Series(texts_test, name='text')
@@ -501,17 +539,90 @@ if check_prediction:
     df_test['pred'] = test_predict.reshape((test_predict.shape[0],))
     false_pred = df_test.loc[(df_test['label'] <>  df_test['pred'])]
     
-    
+    # save records for all preditions and false predictions separately
     df_all = df_test.copy()
     pred_prob_test = pd.DataFrame(data=y_pred,
               index = df_test.index.tolist(),
-              columns=np.arange(0, 5))
+              columns=np.arange(0, NUM_CATEGORY))
     df_all = df_all.merge(pred_prob_test, left_index = True, right_index=True)
-    false_pred_SVM = df_all.loc[(df_all['label'] <> df_all['pred'])]
+    false_pred = df_all.loc[(df_all['label'] <> df_all['pred'])]
     
+    # target file name can be changed
     writer = pd.ExcelWriter('CNN_compare_pred5.xlsx')
     df_all.to_excel(writer,'all')
     false_pred.to_excel(writer, 'wrong')
     writer.save()
     
+if interpret:    
+    with DeepExplain(session=K.get_session()) as de:  
+        # Need to reconstruct the graph in DeepExplain context, using the same weights.
+        # explain(method_name, target_tensor, input_tensor, samples, ...args)
+        # samples: np-array required
+        
+        # model-036 for 4-category classification, model-045 for 5-category classification
+        model = load_model('model-045.h5')
+        
+        # reference to tensors
+        input_tensor = model.get_layer("input_x").input
+        embedding = model.get_layer("embedding").output
+        pre_softmax = model.get_layer("dense2").output
+        
+        # choose sample, range from 0-99, we can find 10 samples in sig_visualization dumped in json files
+        s_index = 88
+        
+        # for example:
+        # this line is classified wrongly, labeled as 3, predicted as 1
+        # context:
+        #p id  p 0022  num  0025    x201c Electrical Injection and Detection of 
+        #Spin Polarized Electrons in Silicon through an Fe sub 3  sub Si Si Schottky 
+        #Tunnel Barrier  x201d , Y  Ando, K  Hamaya, K  Kasahara, Y  Kishi, K  Ueda, K  
+        #Sawano, T  Sadoh, and M  Miyano,  i Applied Physics Letters  i , 
+        #vol  94p  182105, (2009)
+        x_interpret = x_test[s_index:s_index+1]        
+        # perform embedding lookup
+        # use Keras directly? 
+        #embedding_out = sess.run(embedding, {input_tensor: x_interpret})
+        #eModel = Model(inputs=input_tensor, outputs=embedding)
+        #embedding_out = eModel(input_tensor)
+        get_embedding_output = K.function([input_tensor],[embedding])
+        embedding_out = get_embedding_output([x_interpret])[0]        
+        
+        # target the output of the last dense layer (pre-softmax)
+        # To do so, create a new model sharing the same layers untill the last dense (index -2)
+        fModel = Model(inputs=input_tensor, outputs = pre_softmax)
+        target_tensor = fModel(input_tensor)
+        
+        # to target a specific neuron(class), we apply a binary map
+        ys = [1, 0, 0, 0, 0]
+        
+        # input top layer after word embedding, bottom layer before softmax
+        attributions = de.explain('elrp', pre_softmax*ys, embedding, embedding_out)
 
+        # prepare texts
+        text_dec = []
+        for x in np.nditer(x_interpret):
+            if x in token_index.values():
+                text_dec.append(token_index.keys()[token_index.values().index(x)])
+                
+        # generate attribute significance
+        p_gens = np.sum(attributions,axis=2).tolist()
+        new_pgens = []
+        for gen in p_gens[0]:
+            new_pgens.append([gen])
+            
+        abstract_str = texts_test[s_index]
+        true_label = y_test[s_index:s_index+1].argmax(axis=1).tolist()
+        pred_prob = y_pred[s_index:s_index+1].tolist()
+        pred_label = y_pred[s_index:s_index+1].argmax(axis=1).tolist()
+        
+        format_data = {'abstract_str': abstract_str, 'decoded_lst': text_dec, 
+                       'p_gens': new_pgens, 'true_label': true_label, 'pred_label': pred_label,
+                       'pred_prob': pred_prob}
+        
+    
+if prepare_json:
+    # save each sample into a different json file
+    # sig_vis_data1: this line[9:10] is classified correctly, strong confidence, labeled as 1, classified as 1 with prob. 0.873
+    with open('/Users/lizhuoran/Desktop/UOFT/research/patents/sig_visualize/sig_vis_data9.json', 'w') as outfile:
+        json.dump(format_data, outfile)
+        
