@@ -59,6 +59,8 @@ from tensorflow import Tensor
 # settings and controls
 
 # controls: each corresponds to a section, initialized as False
+# direct to the corresponding section: for mac, command+f/for windows, control+f; then type in key words, such as "construct_model_tuned",
+#                                      then all key words will be highlighted and easily directed. this works on the web, in PyCharm as well.
 
 # prepare training/test sets(x, y, text)
 prepare_data = False
